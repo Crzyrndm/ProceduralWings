@@ -184,7 +184,6 @@ namespace pWings
                     res.maxAmount = aeroStatVolume * StaticWingGlobals.wingTankConfigurations[fuelSelectedTankSetup].resources[res.resourceName].unitsPerVolume;
                     res.amount = res.maxAmount * fillPct;
                 }
-                part.Resources.UpdateList();
                 UpdateWindow();
             }
             else
@@ -240,10 +239,8 @@ namespace pWings
             }
             else
             {
-                part.Resources.list.Clear();
+                part.Resources.Clear();
                 PartResource[] partResources = part.GetComponents<PartResource>();
-                for (int i = 0; i < partResources.Length; i++)
-                    DestroyImmediate(partResources[i]);
 
                 foreach (KeyValuePair<string, WingTankResource> kvp in StaticWingGlobals.wingTankConfigurations[fuelSelectedTankSetup].resources)
                 {
@@ -253,7 +250,6 @@ namespace pWings
                     newResourceNode.AddValue("maxAmount", kvp.Value.unitsPerVolume * aeroStatVolume);
                     part.AddResource(newResourceNode);
                 }
-                part.Resources.UpdateList();
             }
         }
 
