@@ -7,7 +7,7 @@ using System.Reflection;
 
 namespace pWings
 {
-    public class WingManipulator : PartModule //, IPartCostModifier, IPartSizeModifier, IPartMassModifier
+    public class WingManipulator : PartModule, IPartCostModifier, IPartSizeModifier, IPartMassModifier
     {
         // PartModule Dimensions
         [KSPField]
@@ -418,7 +418,6 @@ namespace pWings
                 if (isWing && !isCtrlSrf)
                 {
                     part.Modules.GetModules<ModuleLiftingSurface>().FirstOrDefault().deflectionLiftCoeff = stockLiftCoefficient;
-                    part.mass = stockLiftCoefficient * 0.1f;
                 }
                 else
                 {
@@ -427,7 +426,6 @@ namespace pWings
                     {
                         mCtrlSrf.deflectionLiftCoeff = stockLiftCoefficient;
                         mCtrlSrf.ctrlSurfaceArea = modelControlSurfaceFraction;
-                        part.mass = stockLiftCoefficient * (1 + modelControlSurfaceFraction) * 0.1f;
                     }
                 }
                 guiCd = (float)Math.Round(Cd, 2);
@@ -582,19 +580,34 @@ namespace pWings
             }
         }
 
-        public float GetModuleCost(float defaultCost)
+        public float GetModuleCost(float defaultCost, ModifierStagingSituation sit)
         {
-            return wingCost;
+            return wingCost - defaultCost;
         }
 
-        public float GetModuleMass(float defaultMass)
+        public ModifierChangeWhen GetModuleCostChangeWhen()
         {
-            return part.mass - part.partInfo.partPrefab.mass;
+            return ModifierChangeWhen.FIXED;
         }
 
-        public Vector3 GetModuleSize(Vector3 defaultSize)
+        public Vector3 GetModuleSize(Vector3 defaultSize, ModifierStagingSituation sit)
         {
-            return Vector3.zero; // should do this properly at some point
+            return new Vector3(tipPosition.z - rootPosition.z, Math.Max(tipScale.x, rootScale.x) * modelChordLength, Math.Max(tipScale.z, rootScale.z) * 0.2f);
+        }
+
+        public ModifierChangeWhen GetModuleSizeChangeWhen()
+        {
+            return ModifierChangeWhen.FIXED;
+        }
+
+        public float GetModuleMass(float defaultMass, ModifierStagingSituation sit)
+        {
+            return (float)wingMass - defaultMass;
+        }
+
+        public ModifierChangeWhen GetModuleMassChangeWhen()
+        {
+            return ModifierChangeWhen.FIXED;
         }
 
         public void UpdatePositions()
