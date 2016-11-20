@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
 using System.Reflection;
+using UnityEngine;
 
 namespace pWings
 {
@@ -68,6 +68,7 @@ namespace pWings
 
         // Commong config
         public static bool loadedConfig;
+
         public static KeyCode keyTranslation = KeyCode.G;
         public static KeyCode keyTipScale = KeyCode.T;
         public static KeyCode keyRootScale = KeyCode.B; // was r, stock uses r now though
@@ -76,6 +77,7 @@ namespace pWings
 
         // Internals
         public Transform Tip;
+
         public Transform Root;
 
         private Mesh baked;
@@ -114,8 +116,9 @@ namespace pWings
         [KSPField(isPersistant = true)]
         public bool IsAttached = false;
 
-        // Intermediate aerodymamic values 
+        // Intermediate aerodymamic values
         public double Cd;
+
         public double Cl;
         public double ChildrenCl;
         public double wingMass;
@@ -130,12 +133,13 @@ namespace pWings
 
         [KSPField(isPersistant = true)] // otherwise revert to editor does silly things
         public int fuelSelectedTankSetup = -1;
+
         public double aeroStatVolume;
 
         #region Fuel configuration switching
 
-        UIPartActionWindow _myWindow = null;
-        UIPartActionWindow myWindow
+        private UIPartActionWindow _myWindow = null;
+        private UIPartActionWindow myWindow
         {
             get
             {
@@ -172,7 +176,7 @@ namespace pWings
         {
             if (!canBeFueled || !HighLogic.LoadedSceneIsEditor)
                 return;
-            
+
             aeroStatVolume = b_2 * modelChordLength * 0.2 * (tipScale.z + rootScale.z) * (tipScale.x + rootScale.x) / 4;
 
             if (useStockFuel)
@@ -268,13 +272,14 @@ namespace pWings
                 return !RFactive && !MFTactive;
             }
         }
-        #endregion
+
+        #endregion Fuel configuration switching
 
         [KSPEvent(guiName = "Match Taper Ratio")]
         public void MatchTaperEvent()
         {
             // Check for a valid parent
-                // Get parents taper
+            // Get parents taper
             WingManipulator parentWing = part.parent.Modules.OfType<WingManipulator>().FirstOrDefault();
             if (parentWing == null)
                 return;
@@ -447,7 +452,6 @@ namespace pWings
                     FARtype.GetField("TaperRatio").SetValue(FARmodule, taperRatio);
                     FARtype.GetField("ctrlSurfFrac").SetValue(FARmodule, modelControlSurfaceFraction);
                     //print("Set fields");
-
                 }
                 else if (part.Modules.Contains("FARWingAerodynamicModel"))
                 {
@@ -461,7 +465,7 @@ namespace pWings
                     FARtype.GetField("MidChordSweep").SetValue(FARmodule, midChordSweep);
                     FARtype.GetField("TaperRatio").SetValue(FARmodule, taperRatio);
                 }
-                
+
                 if (doInteraction)
                 {
                     if (!triggerUpdate)
@@ -480,12 +484,12 @@ namespace pWings
             StartCoroutine(updateAeroDelayed());
         }
 
-        float updateTimeDelay = 0;
+        private float updateTimeDelay = 0;
         /// <summary>
         /// Handle all the really expensive stuff once we are no longer actively modifying the wing. Doing it continuously causes lag spikes for lots of people
         /// </summary>
         /// <returns></returns>
-        IEnumerator updateAeroDelayed()
+        private IEnumerator updateAeroDelayed()
         {
             bool running = updateTimeDelay > 0;
             updateTimeDelay = 0.5f;
@@ -520,7 +524,7 @@ namespace pWings
             updateTimeDelay = 0;
         }
 
-        #endregion
+        #endregion aerodynamics
 
         #region Common Methods
 
@@ -602,6 +606,8 @@ namespace pWings
 
         public float GetModuleMass(float defaultMass, ModifierStagingSituation sit)
         {
+            if (FARactive)
+                return 0;
             return (float)wingMass - defaultMass;
         }
 
@@ -753,7 +759,7 @@ namespace pWings
             //SetThicknessScalingEventState();
         }
 
-        #endregion
+        #endregion Common Methods
 
         #region PartModule
 
@@ -838,8 +844,8 @@ namespace pWings
                 CalculateAerodynamicValues();
         }
 
-        Vector3 lastMousePos;
-        int state = 0; // 0 == nothing, 1 == translate, 2 == tipScale, 3 == rootScale
+        private Vector3 lastMousePos;
+        private int state = 0; // 0 == nothing, 1 == translate, 2 == tipScale, 3 == rootScale
         public static Camera editorCam;
         public void DeformWing()
         {
@@ -909,7 +915,7 @@ namespace pWings
             UpdateAllCopies(true);
         }
 
-        void OnMouseOver()
+        private void OnMouseOver()
         {
             DebugValues();
             if (!HighLogic.LoadedSceneIsEditor || state != 0)
@@ -923,7 +929,8 @@ namespace pWings
             else if (Input.GetKeyDown(keyRootScale))
                 state = 3;
         }
-        #endregion
+
+        #endregion PartModule
 
         public const double Deg2Rad = Math.PI / 180;
         public const double Rad2Deg = 180 / Math.PI;
