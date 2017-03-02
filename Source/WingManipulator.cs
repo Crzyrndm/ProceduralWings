@@ -204,7 +204,7 @@ namespace pWings
             {
                 if (part.symmetryCounterparts[s] == null) // fixes nullref caused by removing mirror sym while hovering over attach location
                     continue;
-                WingManipulator wing = part.symmetryCounterparts[s].Modules.OfType<WingManipulator>().FirstOrDefault();
+                WingManipulator wing = part.symmetryCounterparts[s].Modules.GetModule<WingManipulator>();
                 if (wing != null)
                 {
                     wing.fuelSelectedTankSetup = fuelSelectedTankSetup;
@@ -280,7 +280,7 @@ namespace pWings
         {
             // Check for a valid parent
             // Get parents taper
-            WingManipulator parentWing = part.parent.Modules.OfType<WingManipulator>().FirstOrDefault();
+            WingManipulator parentWing = part.parent.Modules.GetModule<WingManipulator>();
             if (parentWing == null)
                 return;
             Vector3 changeTipScale = (float)(b_2 / parentWing.b_2) * (parentWing.tipScale - parentWing.rootScale);
@@ -335,7 +335,7 @@ namespace pWings
             // Add up the Cl and ChildrenCl of all our children to our ChildrenCl
             foreach (Part p in this.part.children)
             {
-                WingManipulator child = p.Modules.OfType<WingManipulator>().FirstOrDefault();
+                WingManipulator child = p.Modules.GetModule<WingManipulator>();
                 if (child != null)
                 {
                     ChildrenCl += child.Cl;
@@ -346,7 +346,7 @@ namespace pWings
             // If parent is a pWing, trickle the call to gather ChildrenCl down to them.
             if (this.part.parent != null)
             {
-                WingManipulator Parent = this.part.parent.Modules.OfType<WingManipulator>().FirstOrDefault();
+                WingManipulator Parent = this.part.parent.Modules.GetModule<WingManipulator>();
                 if (Parent != null)
                     Parent.GatherChildrenCl();
             }
@@ -404,7 +404,7 @@ namespace pWings
             connectionForce = Math.Round(Math.Max(Math.Sqrt(Cl + ChildrenCl) * connectionFactor, connectionMinimum), 0);
 
             // Values always set
-            if (isWing)
+            if (!isCtrlSrf)
                 wingCost = (float)Math.Round(wingMass * (1f + ArSweepScale / 4f) * costDensity, 1);
             else // ctrl surfaces
                 wingCost = (float)Math.Round(wingMass * (1f + ArSweepScale / 4f) * (costDensity * (1f - modelControlSurfaceFraction) + costDensityControl * modelControlSurfaceFraction), 1);
@@ -413,24 +413,44 @@ namespace pWings
             part.breakingForce = Mathf.Round((float)connectionForce);
             part.breakingTorque = Mathf.Round((float)connectionForce);
 
+            // h = base + x * (tip - base)
+            // (tip + h) * (1 - x) = (base + h) * x     - aera equality
+            // tip + h - x * tip - h * x = base * x + h * x
+            // 2 * h * x + x * (base + tip) - tip - h = 0
+            // 2 * (base + x * (tip - base)) * x + x * (base + tip) - tip - base - x * (tip - base) = 0
+            // x^2 * 2 * (tip - base) + x * (2 * base + base + tip - (tip - base)) - tip - base = 0
+            // x^2 * 2 * (tip - base) + x * 4 * base - tip - base = 0
+            float a_tp = 2.0f * (tipScale.x - rootScale.x);
+            float pseudotaper_ratio = 0.0f;
+            if (a_tp != 0.0f)
+            {
+                float b_tp = 4.0f * rootScale.x;
+                float c_tp = -tipScale.x - rootScale.x;
+                float D_tp = b_tp * b_tp - 4.0f * a_tp * c_tp;
+                float x1 = (-b_tp + Mathf.Sqrt(D_tp)) / 2.0f / a_tp;
+                float x2 = (-b_tp - Mathf.Sqrt(D_tp)) / 2.0f / a_tp;
+                if ((x1 >= 0.0f) && (x1 <= 1.0f))
+                    pseudotaper_ratio = x1;
+                else
+                    pseudotaper_ratio = x2;
+            }
+            else
+                pseudotaper_ratio = 0.5f;
+
             // Stock-only values
             if (!FARactive)
             {
                 // numbers for lift from: http://forum.kerbalspaceprogram.com/threads/118839-Updating-Parts-to-1-0?p=1896409&viewfull=1#post1896409
                 float stockLiftCoefficient = (float)(surfaceArea / 3.52);
                 // CoL/P matches CoM unless otherwise specified
-                part.CoMOffset = new Vector3(Vector3.Dot(Tip.position - Root.position, part.transform.right) / 2, Vector3.Dot(Tip.position - Root.position, part.transform.up) / 2, 0);
-                if (isWing && !isCtrlSrf)
+                part.CoMOffset = part.CoLOffset = part.CoPOffset = new Vector3(Vector3.Dot(Tip.position - Root.position, part.transform.right) * pseudotaper_ratio, Vector3.Dot(Tip.position - Root.position, part.transform.up) * pseudotaper_ratio, 0);
+                part.Modules.GetModule<ModuleLiftingSurface>().deflectionLiftCoeff = stockLiftCoefficient;
+                if (isCtrlSrf)
                 {
-                    part.Modules.GetModules<ModuleLiftingSurface>().FirstOrDefault().deflectionLiftCoeff = stockLiftCoefficient;
-                }
-                else
-                {
-                    ModuleControlSurface mCtrlSrf = part.Modules.OfType<ModuleControlSurface>().FirstOrDefault();
-                    if (mCtrlSrf != null)
+                    part.Modules.GetModule<ModuleControlSurface>().ctrlSurfaceArea = modelControlSurfaceFraction;
+                    if (!isWing)
                     {
-                        mCtrlSrf.deflectionLiftCoeff = stockLiftCoefficient;
-                        mCtrlSrf.ctrlSurfaceArea = modelControlSurfaceFraction;
+                        part.CoLOffset = new Vector3(part.CoMOffset.x - 0.5f * Vector3.Dot(Tip.position - Root.position, part.transform.right), -0.25f * (tipScale.x + rootScale.x), 0.0f);
                     }
                 }
                 guiCd = (float)Math.Round(Cd, 2);
@@ -561,10 +581,10 @@ namespace pWings
             baked = new Mesh();
             wingSMR.BakeMesh(baked);
             wingSMR.enabled = false;
-            Transform modelTransform = transform.FindChild("model");
-            if (modelTransform.GetComponent<MeshCollider>() == null)
-                modelTransform.gameObject.AddComponent<MeshCollider>();
+            Transform modelTransform = transform.Find("model");
             MeshCollider meshCol = modelTransform.GetComponent<MeshCollider>();
+            if (meshCol == null)
+                modelTransform.gameObject.AddComponent<MeshCollider>();
             meshCol.sharedMesh = null;
             meshCol.sharedMesh = baked;
             meshCol.convex = true;
@@ -660,12 +680,11 @@ namespace pWings
             if (updateChildren && childrenNeedUpdate)
                 UpdateChildren();
 
-            if (isWing || isCtrlSrf)
-                CalculateAerodynamicValues();
+            CalculateAerodynamicValues();
 
             foreach (Part p in this.part.symmetryCounterparts)
             {
-                var clone = p.Modules.OfType<WingManipulator>().FirstOrDefault();
+                var clone = p.Modules.GetModule<WingManipulator>();
 
                 clone.rootScale = rootScale;
                 clone.tipScale = tipScale;
@@ -680,8 +699,7 @@ namespace pWings
                 if (updateChildren && childrenNeedUpdate)
                     clone.UpdateChildren();
 
-                if (isWing || isCtrlSrf)
-                    clone.CalculateAerodynamicValues();
+                clone.CalculateAerodynamicValues();
             }
         }
 
@@ -692,7 +710,7 @@ namespace pWings
             foreach (Part p in this.part.children)
             {
                 // Check that it is a pWing and that it is affected by parent snapping
-                WingManipulator wing = p.Modules.OfType<WingManipulator>().FirstOrDefault();
+                WingManipulator wing = p.Modules.GetModule<WingManipulator>();
                 if (wing != null && !wing.IgnoreSnapping && !wing.doNotParticipateInParentSnapping)
                 {
                     // Update its positions and refresh the collider
@@ -700,8 +718,7 @@ namespace pWings
                     wing.SetupCollider();
 
                     // If its a wing, refresh its aerodynamic values
-                    if (isWing || isCtrlSrf) // FIXME should this be child.isWing etc?
-                        wing.CalculateAerodynamicValues();
+                    wing.CalculateAerodynamicValues();
                 }
             }
         }
@@ -735,8 +752,7 @@ namespace pWings
             }
 
             // Now redo aerodynamic values.
-            if (isWing || isCtrlSrf)
-                CalculateAerodynamicValues();
+            CalculateAerodynamicValues();
 
             // Enable relative scaling event
             //SetThicknessScalingEventState();
@@ -833,8 +849,7 @@ namespace pWings
                 else
                 {
                     // A pWing just detached from us, we need to redo the wing values.
-                    if (isWing || isCtrlSrf)
-                        CalculateAerodynamicValues();
+                    CalculateAerodynamicValues();
                 }
 
                 // And set this to false so we only do it once.
