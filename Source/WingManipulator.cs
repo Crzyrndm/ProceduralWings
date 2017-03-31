@@ -584,7 +584,7 @@ namespace pWings
             Transform modelTransform = transform.Find("model");
             MeshCollider meshCol = modelTransform.GetComponent<MeshCollider>();
             if (meshCol == null)
-                modelTransform.gameObject.AddComponent<MeshCollider>();
+                meshCol = modelTransform.gameObject.AddComponent<MeshCollider>();
             meshCol.sharedMesh = null;
             meshCol.sharedMesh = baked;
             meshCol.convex = true;
