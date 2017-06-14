@@ -21,9 +21,9 @@ namespace pWings
 
             GUIName = node.GetValue("name");
             ConfigNode[] nodes = node.GetNodes("Resource");
-            for (int i = 0; i < nodes.Length; ++i)
+            foreach (ConfigNode n in nodes)
             {
-                WingTankResource res = new WingTankResource(nodes[i]);
+                var res = new WingTankResource(n);
                 if (res.resource != null)
                 {
                     resources.Add(res.resource.name, res);
@@ -31,7 +31,9 @@ namespace pWings
                 }
             }
             foreach (KeyValuePair<string, WingTankResource> kvp in resources)
+            {
                 kvp.Value.SetUnitsPerVolume(ratioTotal);
+            }
         }
 
         public void Save(ConfigNode node) { }

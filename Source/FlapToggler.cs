@@ -18,7 +18,9 @@ namespace DYJlibrary
             Flap = part.FindModelTransform(flapTransform);
             cachedRenderer = Flap.gameObject.GetComponent<Renderer>();
             if (FlapActive != false)
+            {
                 ToggleFlaps();
+            }
         }
 
         [KSPEvent(active =true, guiActive =true, guiActiveEditor =true,guiName ="Toggle Flaps")]

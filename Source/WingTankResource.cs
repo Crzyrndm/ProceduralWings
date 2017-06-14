@@ -31,9 +31,13 @@ namespace pWings
         public void SetUnitsPerVolume(float ratioTotal)
         {
             if (resource.volume == 0)
+            {
                 unitsPerVolume = ratio;
+            }
             else
+            {
                 unitsPerVolume = ratio * 1000.0f / (resource.volume * ratioTotal);
+            }
         }
     }
 }

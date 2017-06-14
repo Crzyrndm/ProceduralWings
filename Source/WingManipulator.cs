@@ -90,6 +90,7 @@ namespace pWings
         private static bool FARactive = false;
         public static bool RFactive;
         public static bool MFTactive;
+        bool moduleCCused = false;
 
         private bool justDetached = false;
 
@@ -139,17 +140,19 @@ namespace pWings
         #region Fuel configuration switching
 
         private UIPartActionWindow _myWindow = null;
-        private UIPartActionWindow myWindow
+        private UIPartActionWindow MyWindow
         {
             get
             {
                 if (_myWindow == null)
                 {
-                    UIPartActionWindow[] windows = (UIPartActionWindow[])FindObjectsOfType(typeof(UIPartActionWindow));
-                    for (int i = 0; i < windows.Length; ++i)
+                    UIPartActionWindow[] windows = FindObjectsOfType<UIPartActionWindow>();
+                    foreach (UIPartActionWindow w in  windows)
                     {
-                        if (windows[i].part == part)
-                            _myWindow = windows[i];
+                        if (w.part == part)
+                        {
+                            _myWindow = w;
+                        }
                     }
                 }
                 return _myWindow;
@@ -158,32 +161,38 @@ namespace pWings
 
         private void UpdateWindow()
         {
-            if (myWindow != null)
-                myWindow.displayDirty = true;
+            if (MyWindow != null)
+            {
+                MyWindow.displayDirty = true;
+            }
         }
 
         // Has to be situated here as this KSPEvent is not correctly added Part.Events otherwise
         [KSPEvent(guiActive = false, guiActiveEditor = true, guiName = "Next configuration", active = true)]
         public void NextConfiguration()
         {
-            if (!(canBeFueled && useStockFuel))
+            if (!(CanBeFueled && UseStockFuel))
+            {
                 return;
+            }
+
             fuelSelectedTankSetup = ++fuelSelectedTankSetup % StaticWingGlobals.wingTankConfigurations.Count;
             FuelTankTypeChanged();
         }
 
         public void FuelUpdateVolume()
         {
-            if (!canBeFueled || !HighLogic.LoadedSceneIsEditor)
+            if (!CanBeFueled || !HighLogic.LoadedSceneIsEditor)
+            {
                 return;
+            }
 
             aeroStatVolume = b_2 * modelChordLength * 0.2 * (tipScale.z + rootScale.z) * (tipScale.x + rootScale.x) / 4;
 
-            if (useStockFuel)
+            if (UseStockFuel)
             {
-                for (int i = 0; i < part.Resources.Count; ++i)
+                foreach (PartResource res in part.Resources)
                 {
-                    PartResource res = part.Resources[i];
                     double fillPct = res.maxAmount > 0 ? res.amount / res.maxAmount : 1.0;
                     res.maxAmount = aeroStatVolume * StaticWingGlobals.wingTankConfigurations[fuelSelectedTankSetup].resources[res.resourceName].unitsPerVolume;
                     res.amount = res.maxAmount * fillPct;
@@ -191,7 +200,9 @@ namespace pWings
                 UpdateWindow();
             }
             else
+            {
                 FuelSetResources(); // for MFT/RF.
+            }
         }
 
         /// <summary>
@@ -200,11 +211,14 @@ namespace pWings
         private void FuelTankTypeChanged()
         {
             FuelSetResources();
-            for (int s = 0; s < part.symmetryCounterparts.Count; s++)
+            foreach (Part p in part.symmetryCounterparts)
             {
-                if (part.symmetryCounterparts[s] == null) // fixes nullref caused by removing mirror sym while hovering over attach location
+                if (p == null) // fixes nullref caused by removing mirror sym while hovering over attach location
+                {
                     continue;
-                WingManipulator wing = part.symmetryCounterparts[s].Modules.GetModule<WingManipulator>();
+                }
+
+                WingManipulator wing = p.Modules.GetModule<WingManipulator>();
                 if (wing != null)
                 {
                     wing.fuelSelectedTankSetup = fuelSelectedTankSetup;
@@ -214,7 +228,9 @@ namespace pWings
 
             UpdateWindow();
             if (HighLogic.LoadedSceneIsEditor)
+            {
                 GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
+            }
         }
 
         /// <summary>
@@ -222,24 +238,18 @@ namespace pWings
         /// </summary>
         public void FuelSetResources()
         {
-            if (!(canBeFueled && HighLogic.LoadedSceneIsEditor))
-                return;
-
-            if (!useStockFuel)
+            if (!(CanBeFueled && HighLogic.LoadedSceneIsEditor))
             {
-                PartModule module = part.Modules["ModuleFuelTanks"];
-                if (module == null)
-                    return;
+                return;
+            }
 
-                Type type = module.GetType();
-
-                double volumeRF = aeroStatVolume;
-                if (RFactive)
-                    volumeRF *= 1000;     // RF requests units in liters instead of cubic meters
-                else // assemblyMFTUsed
-                    volumeRF *= 173.9;  // MFT requests volume in units
-                type.GetField("volume").SetValue(module, volumeRF);
-                type.GetMethod("ChangeVolume").Invoke(module, new object[] { volumeRF });
+            if (!UseStockFuel)
+            {
+                // send public event OnPartVolumeChanged, like ProceduralParts does
+                var data = new BaseEventDetails(BaseEventDetails.Sender.USER);
+                data.Set<string>("volName", "Tankage");
+                data.Set("newTotalVolume", aeroStatVolume); //aeroStatVolume should be in m3
+                part.SendEvent("OnPartVolumeChanged", data, 0);
             }
             else
             {
@@ -248,7 +258,7 @@ namespace pWings
 
                 foreach (KeyValuePair<string, WingTankResource> kvp in StaticWingGlobals.wingTankConfigurations[fuelSelectedTankSetup].resources)
                 {
-                    ConfigNode newResourceNode = new ConfigNode("RESOURCE");
+                    var newResourceNode = new ConfigNode("RESOURCE");
                     newResourceNode.AddValue("name", kvp.Value.resource.name);
                     newResourceNode.AddValue("amount", kvp.Value.unitsPerVolume * aeroStatVolume);
                     newResourceNode.AddValue("maxAmount", kvp.Value.unitsPerVolume * aeroStatVolume);
@@ -257,7 +267,7 @@ namespace pWings
             }
         }
 
-        public bool canBeFueled
+        public bool CanBeFueled
         {
             get
             {
@@ -265,11 +275,11 @@ namespace pWings
             }
         }
 
-        public bool useStockFuel
+        public bool UseStockFuel
         {
             get
             {
-                return !RFactive && !MFTactive;
+                return !(RFactive || MFTactive || moduleCCused);
             }
         }
 
@@ -282,7 +292,10 @@ namespace pWings
             // Get parents taper
             WingManipulator parentWing = part.parent.Modules.GetModule<WingManipulator>();
             if (parentWing == null)
+            {
                 return;
+            }
+
             Vector3 changeTipScale = (float)(b_2 / parentWing.b_2) * (parentWing.tipScale - parentWing.rootScale);
 
             // Scale the tip
@@ -333,7 +346,7 @@ namespace pWings
             ChildrenCl = 0;
 
             // Add up the Cl and ChildrenCl of all our children to our ChildrenCl
-            foreach (Part p in this.part.children)
+            foreach (Part p in part.children)
             {
                 WingManipulator child = p.Modules.GetModule<WingManipulator>();
                 if (child != null)
@@ -344,11 +357,13 @@ namespace pWings
             }
 
             // If parent is a pWing, trickle the call to gather ChildrenCl down to them.
-            if (this.part.parent != null)
+            if (part.parent != null)
             {
-                WingManipulator Parent = this.part.parent.Modules.GetModule<WingManipulator>();
+                WingManipulator Parent = part.parent.Modules.GetModule<WingManipulator>();
                 if (Parent != null)
+                {
                     Parent.GatherChildrenCl();
+                }
             }
         }
 
@@ -356,16 +371,23 @@ namespace pWings
         // this will set the triggerUpdate field true on all wings on the vessel.
         public void TriggerUpdateAllWings()
         {
-            List<Part> plist = new List<Part>();
+            var plist = new List<Part>();
             if (HighLogic.LoadedSceneIsEditor)
-                plist = EditorLogic.SortedShipList;
-            else
-                plist = part.vessel.Parts;
-            for (int i = 0; i < plist.Count; i++)
             {
-                WingManipulator wing = plist[i].Modules.GetModule<WingManipulator>();
+                plist = EditorLogic.SortedShipList;
+            }
+            else
+            {
+                plist = part.vessel.Parts;
+            }
+
+            foreach (Part p in plist)
+            {
+                WingManipulator wing = p.Modules.GetModule<WingManipulator>();
                 if (wing != null)
+                {
                     wing.triggerUpdate = true;
+                }
             }
         }
 
@@ -373,7 +395,9 @@ namespace pWings
         public void CalculateAerodynamicValues(bool doInteraction = true)
         {
             if (!isWing && !isCtrlSrf)
+            {
                 return;
+            }
             // Calculate intemediate values
             //print(part.name + ": Calc Aero values");
             b_2 = tipPosition.z - Root.localPosition.z + 1.0;
@@ -405,9 +429,13 @@ namespace pWings
 
             // Values always set
             if (!isCtrlSrf)
+            {
                 wingCost = (float)Math.Round(wingMass * (1f + ArSweepScale / 4f) * costDensity, 1);
+            }
             else // ctrl surfaces
+            {
                 wingCost = (float)Math.Round(wingMass * (1f + ArSweepScale / 4f) * (costDensity * (1f - modelControlSurfaceFraction) + costDensityControl * modelControlSurfaceFraction), 1);
+            }
 
             // should really do something about the joint torque here, not just its limits
             part.breakingForce = Mathf.Round((float)connectionForce);
@@ -430,12 +458,18 @@ namespace pWings
                 float x1 = (-b_tp + Mathf.Sqrt(D_tp)) / 2.0f / a_tp;
                 float x2 = (-b_tp - Mathf.Sqrt(D_tp)) / 2.0f / a_tp;
                 if ((x1 >= 0.0f) && (x1 <= 1.0f))
+                {
                     pseudotaper_ratio = x1;
+                }
                 else
+                {
                     pseudotaper_ratio = x2;
+                }
             }
             else
+            {
                 pseudotaper_ratio = 0.5f;
+            }
 
             // Stock-only values
             if (!FARactive)
@@ -489,7 +523,10 @@ namespace pWings
                 if (doInteraction)
                 {
                     if (!triggerUpdate)
+                    {
                         TriggerUpdateAllWings();
+                    }
+
                     triggerUpdate = false;
                 }
             }
@@ -501,7 +538,7 @@ namespace pWings
             guiSurfaceArea = (float)surfaceArea;
             guiAspectRatio = (float)aspectRatio;
 
-            StartCoroutine(updateAeroDelayed());
+            StartCoroutine(UpdateAeroDelayed());
         }
 
         private float updateTimeDelay = 0;
@@ -509,12 +546,15 @@ namespace pWings
         /// Handle all the really expensive stuff once we are no longer actively modifying the wing. Doing it continuously causes lag spikes for lots of people
         /// </summary>
         /// <returns></returns>
-        private IEnumerator updateAeroDelayed()
+        private IEnumerator UpdateAeroDelayed()
         {
             bool running = updateTimeDelay > 0;
             updateTimeDelay = 0.5f;
             if (running)
+            {
                 yield break;
+            }
+
             while (updateTimeDelay > 0)
             {
                 updateTimeDelay -= TimeWarp.deltaTime;
@@ -540,7 +580,10 @@ namespace pWings
             FuelUpdateVolume();
 
             if (HighLogic.LoadedSceneIsEditor)
+            {
                 GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
+            }
+
             updateTimeDelay = 0;
         }
 
@@ -584,7 +627,10 @@ namespace pWings
             Transform modelTransform = transform.Find("model");
             MeshCollider meshCol = modelTransform.GetComponent<MeshCollider>();
             if (meshCol == null)
+            {
                 meshCol = modelTransform.gameObject.AddComponent<MeshCollider>();
+            }
+
             meshCol.sharedMesh = null;
             meshCol.sharedMesh = baked;
             meshCol.convex = true;
@@ -593,9 +639,14 @@ namespace pWings
                 CalculateAerodynamicValues(false);
                 PartModule FARmodule = null;
                 if (part.Modules.Contains("FARControllableSurface"))
+                {
                     FARmodule = part.Modules["FARControllableSurface"];
+                }
                 else if (part.Modules.Contains("FARWingAerodynamicModel"))
+                {
                     FARmodule = part.Modules["FARWingAerodynamicModel"];
+                }
+
                 if (FARmodule != null)
                 {
                     Type FARtype = FARmodule.GetType();
@@ -627,7 +678,10 @@ namespace pWings
         public float GetModuleMass(float defaultMass, ModifierStagingSituation sit)
         {
             if (FARactive)
+            {
                 return 0;
+            }
+
             return (float)wingMass - defaultMass;
         }
 
@@ -647,8 +701,8 @@ namespace pWings
             Tip.localPosition = tipPosition + TipSpawnOffset;
 
             if (IsAttached &&
-                this.part.parent != null &&
-                this.part.parent.Modules.Contains<WingManipulator>() &&
+                part.parent != null &&
+                part.parent.Modules.Contains<WingManipulator>() &&
                 !IgnoreSnapping &&
                 !doNotParticipateInParentSnapping)
             {
@@ -678,13 +732,19 @@ namespace pWings
             SetupCollider();
 
             if (updateChildren && childrenNeedUpdate)
+            {
                 UpdateChildren();
+            }
 
             CalculateAerodynamicValues();
 
-            foreach (Part p in this.part.symmetryCounterparts)
+            foreach (Part p in part.symmetryCounterparts)
             {
-                var clone = p.Modules.GetModule<WingManipulator>();
+                if (p == null)
+                {
+                    continue;
+                }
+                WingManipulator clone = p.Modules.GetModule<WingManipulator>();
 
                 clone.rootScale = rootScale;
                 clone.tipScale = tipScale;
@@ -697,7 +757,9 @@ namespace pWings
                 clone.SetupCollider();
 
                 if (updateChildren && childrenNeedUpdate)
+                {
                     clone.UpdateChildren();
+                }
 
                 clone.CalculateAerodynamicValues();
             }
@@ -707,7 +769,7 @@ namespace pWings
         public void UpdateChildren()
         {
             // Get the list of child parts
-            foreach (Part p in this.part.children)
+            foreach (Part p in part.children)
             {
                 // Check that it is a pWing and that it is affected by parent snapping
                 WingManipulator wing = p.Modules.GetModule<WingManipulator>();
@@ -741,8 +803,8 @@ namespace pWings
             //SetThicknessScalingTypeToRoot();
 
             // if snap is not ignored, lets update our dimensions.
-            if (this.part.parent != null &&
-                this.part.parent.Modules.Contains<WingManipulator>() &&
+            if (part.parent != null &&
+                part.parent.Modules.Contains<WingManipulator>() &&
                 !IgnoreSnapping &&
                 !doNotParticipateInParentSnapping)
             {
@@ -762,7 +824,9 @@ namespace pWings
         {
             // If the root is not null and is a pWing, set its justDetached so it knows to check itself next Update
             if (part.parent != null && part.parent.Modules.Contains<WingManipulator>())
+            {
                 part.parent.Modules.GetModule<WingManipulator>().justDetached = true;
+            }
 
             // We are not attached.
             IsAttached = false;
@@ -781,12 +845,36 @@ namespace pWings
 
         private void Setup(bool doInteraction)
         {
+            moduleCCused = part.Modules.Contains("ModuleSwitchableTank") || part.Modules.Contains("ModuleTankManager");
             if (!assembliesChecked)
             {
-                FARactive = AssemblyLoader.loadedAssemblies.Any(a => a.assembly.GetName().Name.Equals("FerramAerospaceResearch", StringComparison.InvariantCultureIgnoreCase));
-                RFactive = AssemblyLoader.loadedAssemblies.Any(a => a.assembly.GetName().Name.Equals("RealFuels", StringComparison.InvariantCultureIgnoreCase));
-                MFTactive = AssemblyLoader.loadedAssemblies.Any(a => a.assembly.GetName().Name.Equals("modularFuelTanks", StringComparison.InvariantCultureIgnoreCase));
                 assembliesChecked = true;
+                foreach (AssemblyLoader.LoadedAssembly test in AssemblyLoader.loadedAssemblies)
+                {
+                    if (test.assembly.GetName().Name.Equals("FerramAerospaceResearch", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        FARactive = true;
+                    }
+                    else if (test.assembly.GetName().Name.Equals("RealFuels", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        RFactive = true;
+                    }
+                    else if (test.assembly.GetName().Name.Equals("modularFuelTanks", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        MFTactive = true;
+                    }
+                }
+            }
+            if (Events != null)
+            {
+                // Enable root-matching events
+                if (IsAttached &&
+                    part.parent != null &&
+                    part.parent.Modules.Contains<WingManipulator>())
+                {
+                    Events["MatchTaperEvent"].guiActiveEditor = true;
+                }
+                Events["NextConfiguration"].active = UseStockFuel;
             }
 
             Tip = part.FindModelTransform("Tip");
@@ -799,21 +887,13 @@ namespace pWings
 
             CalculateAerodynamicValues(doInteraction);
 
-            // Enable root-matching events
-            if (IsAttached &&
-                this.part.parent != null &&
-                this.part.parent.Modules.Contains<WingManipulator>())
-            {
-                Events["MatchTaperEvent"].guiActiveEditor = true;
-            }
-
             // Set active state of relative scaling event
             //SetThicknessScalingEventState();
             // Set relative scaling event name
             //SetThicknessScalingEventName();
 
-            this.part.OnEditorAttach += new Callback(UpdateOnEditorAttach);
-            this.part.OnEditorDetach += new Callback(UpdateOnEditorDetach);
+            part.OnEditorAttach += new Callback(UpdateOnEditorAttach);
+            part.OnEditorDetach += new Callback(UpdateOnEditorDetach);
 
             if (fuelSelectedTankSetup < 0)
             {
@@ -831,7 +911,9 @@ namespace pWings
         public void Update()
         {
             if (!HighLogic.LoadedSceneIsEditor || wingSMR == null)
+            {
                 return;
+            }
 
             DeformWing();
 
@@ -844,7 +926,7 @@ namespace pWings
                 if (!IsAttached)
                 {
                     // We have just detached. Check if we're the root of the detached segment
-                    SegmentRoot = (this.part.parent == null) ? true : false;
+                    SegmentRoot = (part.parent == null) ? true : false;
                 }
                 else
                 {
@@ -856,7 +938,9 @@ namespace pWings
                 justDetached = false;
             }
             if (triggerUpdate)
+            {
                 CalculateAerodynamicValues();
+            }
         }
 
         private Vector3 lastMousePos;
@@ -864,8 +948,10 @@ namespace pWings
         public static Camera editorCam;
         public void DeformWing()
         {
-            if (this.part.parent == null || !IsAttached || state == 0)
+            if (part.parent == null || !IsAttached || state == 0)
+            {
                 return;
+            }
 
             float depth = EditorCamera.Instance.GetComponentCached<Camera>(ref editorCam).WorldToScreenPoint(state != 3 ? Tip.position : Root.position).z; // distance of tip transform from camera
             Vector3 diff = (state == 1 ? moveSpeed : scaleSpeed * 20) * depth * (Input.mousePosition - lastMousePos) / 4500;
@@ -915,7 +1001,7 @@ namespace pWings
             // only if the root part is not a pWing,
             // or we were told to ignore snapping,
             // or the part is set to ignore snapping (wing edge control surfaces, tipically)
-            else if (state == 3 && (!this.part.parent.Modules.Contains<WingManipulator>() || IgnoreSnapping || doNotParticipateInParentSnapping))
+            else if (state == 3 && (!part.parent.Modules.Contains<WingManipulator>() || IgnoreSnapping || doNotParticipateInParentSnapping))
             {
                 if (!Input.GetKey(keyRootScale))
                 {
@@ -934,15 +1020,23 @@ namespace pWings
         {
             DebugValues();
             if (!HighLogic.LoadedSceneIsEditor || state != 0)
+            {
                 return;
+            }
 
             lastMousePos = Input.mousePosition;
             if (Input.GetKeyDown(keyTranslation))
+            {
                 state = 1;
+            }
             else if (Input.GetKeyDown(keyTipScale))
+            {
                 state = 2;
+            }
             else if (Input.GetKeyDown(keyRootScale))
+            {
                 state = 3;
+            }
         }
 
         #endregion PartModule
@@ -953,9 +1047,13 @@ namespace pWings
         public static T Clamp<T>(T val, T min, T max) where T : IComparable
         {
             if (val.CompareTo(min) < 0) // val less than min
+            {
                 return min;
-            if (val.CompareTo(max) > 0) // val greater than max
+            }
+            else if (val.CompareTo(max) > 0) // val greater than max
+            {
                 return max;
+            }
             return val;
         }
     }
